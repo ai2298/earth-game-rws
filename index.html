@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Earth Impact Simulator | Photorealistic</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  
+  <style>
+    :root {
+      --primary: #ff4d4d;
+      --bg-dark: rgba(10, 10, 10, 0.98);
+      --accent: #00f2ff;
+      --panel-width: 320px;
+    }
+    body, html {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #000;
+    }
+    #canvas-container {
+      width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+    }
+    #ui-panel {
+      position: absolute; top: 20px; left: 20px;
+      background: var(--bg-dark);
+      color: white; padding: 24px; border-radius: 16px;
+      width: var(--panel-width); z-index: 100; 
+      border: 1px solid #333;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+      backdrop-filter: blur(15px);
+    }
+    .header-section {
+      border-bottom: 2px solid var(--primary);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+    }
+    h1 { margin: 0; font-size: 1.5em; font-weight: 800; letter-spacing: -0.5px; }
+    .subtitle { 
+      margin: 4px 0 0 0; 
+      font-size: 0.7em; 
+      color: var(--accent); 
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+    .input-group { margin-bottom: 18px; }
+    label { display: block; font-size: 0.8em; margin-bottom: 6px; color: #aaa; font-weight: 600; }
+    input { 
+      width: 100%; background: #1a1a1a; border: 1px solid #444; 
+      color: white; padding: 10px; border-radius: 8px; box-sizing: border-box;
+      outline: none; transition: border 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    button {
+      width: 100%; padding: 14px; background: var(--primary); border: none;
+      color: white; font-weight: 800; cursor: pointer; border-radius: 8px;
+      transition: all 0.3s; font-size: 1em; text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    button:hover { background: #ff2a2a; transform: scale(1.02); box-shadow: 0 0 20px rgba(255, 77, 77, 0.4); }
+    button.secondary {
+      background: #333;
+    }
+    button.secondary:hover {
+      background: #444;
+      box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
+    }
+    #stats {
+      margin-top: 20px; padding: 15px; background: rgba(0, 242, 255, 0.05);
+      border-left: 4px solid var(--accent);
+      border-radius: 4px; font-size: 0.9em; line-height: 1.6; display: none;
+    }
+    .instructions { font-size: 0.8em; color: #666; margin-bottom: 20px; line-height: 1.4; }
+    .coord-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--accent);
+      font-size: 1.2em;
+      font-weight: 700;
+      z-index: 50;
+      text-align: center;
+    }
+    .loading-bar {
+      width: 200px;
+      height: 4px;
+      background: #333;
+      margin-top: 15px;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loading-progress {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    @media (max-width: 480px) {
+      #ui-panel { width: calc(100% - 40px); left: 20px; top: 10px; padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading" class="loading">
+    Loading Earth...
+    <div class="loading-bar">
+      <div class="loading-progress" id="progress"></div>
+    </div>
+  </div>
+
+  <div id="ui-panel">
+    <div class="header-section">
+      <h1>Impact Simulator</h1>
+      <p class="subtitle">NASA Earth Imagery</p>
+      <p class="subtitle" style="color: #888; font-size: 0.65em; margin-top: 8px;">Made by RWS Nova Innovators</p>
+    </div>
+
+    <p class="instructions">
+      <b>Targeting:</b> Click the globe or enter coordinates below.<br>
+      <b>Launch:</b> Set parameters and initiate impact.
+    </p>
+
+    <div class="input-group">
+      <label>Target Coordinates</label>
+      <div class="coord-inputs">
+        <input type="number" id="latitude" placeholder="Lat" step="0.01" min="-90" max="90">
+        <input type="number" id="longitude" placeholder="Lon" step="0.01" min="-180" max="180">
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>Asteroid Diameter (m)</label>
+      <input type="number" id="size" value="1200" min="10">
+    </div>
+    
+    <div class="input-group">
+      <label>Impact Velocity (km/s)</label>
+      <input type="number" id="velocity" value="20" min="1">
+    </div>
+
+    <button onclick="simulateImpact()">Initiate Impact</button>
+    <button class="secondary" onclick="resetView()">Reset View</button>
+
+    <div id="stats">
+      <strong id="status-text" style="color: var(--accent); text-transform: uppercase; font-size: 0.8em;">Target Acquired</strong><br>
+      <span id="location-info"></span><br>
+      <span id="crater-size"></span><br>
+      <span id="energy-yield"></span><br>
+      <span id="destruction-level"></span>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    // Three.js Scene Setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // Add stars background
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
+    const starsVertices = [];
+    for (let i = 0; i < 10000; i++) {
+      const x = (Math.random() - 0.5) * 2000;
+      const y = (Math.random() - 0.5) * 2000;
+      const z = (Math.random() - 0.5) * 2000;
+      starsVertices.push(x, y, z);
+    }
+    starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    scene.add(stars);
+
+    // Realistic lighting setup
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    sunLight.position.set(5, 3, 5);
+    scene.add(sunLight);
+
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    // Hemisphere light for realistic atmosphere
+    const hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.3);
+    scene.add(hemiLight);
+
+    // Create Earth Globe with high detail
+    const earthRadius = 5;
+    const earthGeometry = new THREE.SphereGeometry(earthRadius, 128, 128);
+    let earth, atmosphere, clouds;
+    
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.crossOrigin = 'anonymous';
+    
+    let loadedTextures = 0;
+    const totalTextures = 3;
+
+    function updateProgress() {
+      loadedTextures++;
+      const progress = (loadedTextures / totalTextures) * 100;
+      document.getElementById('progress').style.width = progress + '%';
+      if (loadedTextures === totalTextures) {
+        setTimeout(() => {
+          document.getElementById('loading').style.display = 'none';
+        }, 500);
+      }
+    }
+
+    // Load Earth Day Texture (High Resolution)
+    textureLoader.load(
+      'https://unpkg.com/three-globe/example/img/earth-day.jpg',
+      function(dayTexture) {
+        // Load bump/normal map for terrain relief
+        textureLoader.load(
+          'https://unpkg.com/three-globe/example/img/earth-topology.png',
+          function(bumpTexture) {
+            // Load specular map for ocean shine
+            textureLoader.load(
+              'https://unpkg.com/three-globe/example/img/earth-water.png',
+              function(specularTexture) {
+                const earthMaterial = new THREE.MeshPhongMaterial({
+                  map: dayTexture,
+                  bumpMap: bumpTexture,
+                  bumpScale: 0.3,
+                  specularMap: specularTexture,
+                  specular: new THREE.Color(0x333333),
+                  shininess: 15
+                });
+                
+                earth = new THREE.Mesh(earthGeometry, earthMaterial);
+                scene.add(earth);
+                updateProgress();
+              },
+              undefined,
+              function() {
+                const earthMaterial = new THREE.MeshPhongMaterial({
+                  map: dayTexture,
+                  bumpMap: bumpTexture,
+                  bumpScale: 0.3,
+                  shininess: 15
+                });
+                earth = new THREE.Mesh(earthGeometry, earthMaterial);
+                scene.add(earth);
+                updateProgress();
+              }
+            );
+          },
+          undefined,
+          function() {
+            const earthMaterial = new THREE.MeshPhongMaterial({
+              map: dayTexture,
+              shininess: 10
+            });
+            earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            scene.add(earth);
+            updateProgress();
+          }
+        );
+      },
+      undefined,
+      function(error) {
+        // Ultimate fallback
+        const earthMaterial = new THREE.MeshPhongMaterial({
+          color: 0x2233ff,
+          shininess: 10
+        });
+        earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        scene.add(earth);
+        loadedTextures = totalTextures;
+        updateProgress();
+      }
+    );
+
+    // Add realistic clouds layer
+    const cloudsGeometry = new THREE.SphereGeometry(earthRadius + 0.05, 128, 128);
+    textureLoader.load(
+      'https://unpkg.com/three-globe/example/img/earth-clouds.png',
+      function(cloudTexture) {
+        const cloudsMaterial = new THREE.MeshPhongMaterial({
+          map: cloudTexture,
+          transparent: true,
+          opacity: 0.4,
+          depthWrite: false
+        });
+        clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
+        scene.add(clouds);
+        updateProgress();
+      },
+      undefined,
+      function() {
+        updateProgress();
+      }
+    );
+
+    // Add atmospheric glow
+    const atmosphereGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true
+    });
+    atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    scene.add(atmosphere);
+    updateProgress();
+
+    camera.position.z = 15;
+
+    // Mouse interaction
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let targetRotation = { x: 0, y: 0 };
+    let currentRotation = { x: 0, y: 0.5 }; // Start with slight rotation
+    let autoRotate = true;
+    
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let impactMarkers = [];
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      autoRotate = false;
+      previousMousePosition = { x: e.clientX, y: e.clientY };
+    });
+
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const deltaX = e.clientX - previousMousePosition.x;
+        const deltaY = e.clientY - previousMousePosition.y;
+        
+        targetRotation.y += deltaX * 0.005;
+        targetRotation.x += deltaY * 0.005;
+        targetRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotation.x));
+        
+        previousMousePosition = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    renderer.domElement.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    // Click to select impact location
+    renderer.domElement.addEventListener('click', (event) => {
+      if (isDragging || !earth) return;
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(earth);
+
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+        
+        // Convert 3D point to lat/lon
+        const lat = Math.asin(point.y / earthRadius) * (180 / Math.PI);
+        const lon = Math.atan2(point.x, point.z) * (180 / Math.PI);
+        
+        document.getElementById('latitude').value = lat.toFixed(2);
+        document.getElementById('longitude').value = lon.toFixed(2);
+        
+        addTargetMarker(lat, lon);
+        document.getElementById('stats').style.display = 'block';
+        document.getElementById('status-text').innerText = "Target Locked";
+        document.getElementById('location-info').innerHTML = `Location: <b>${lat.toFixed(2)}°, ${lon.toFixed(2)}°</b>`;
+      }
+    });
+
+    function latLonToVector3(lat, lon, radius) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+
+      const x = -(radius * Math.sin(phi) * Math.cos(theta));
+      const z = (radius * Math.sin(phi) * Math.sin(theta));
+      const y = (radius * Math.cos(phi));
+
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function addTargetMarker(lat, lon) {
+      // Clear old markers
+      impactMarkers.forEach(marker => scene.remove(marker));
+      impactMarkers = [];
+
+      // Add pulsing target indicator
+      const markerGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+      const markerMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00f2ff,
+        transparent: true,
+        opacity: 0.9
+      });
+      const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+      
+      const position = latLonToVector3(lat, lon, earthRadius + 0.08);
+      marker.position.copy(position);
+      
+      scene.add(marker);
+      impactMarkers.push(marker);
+      
+      // Add target ring
+      const ringGeometry = new THREE.RingGeometry(0.15, 0.18, 32);
+      const ringMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00f2ff, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.position.copy(position);
+      ring.lookAt(0, 0, 0);
+      
+      scene.add(ring);
+      impactMarkers.push(ring);
+    }
+
+    function simulateImpact() {
+      const lat = parseFloat(document.getElementById('latitude').value);
+      const lon = parseFloat(document.getElementById('longitude').value);
+      
+      if (isNaN(lat) || isNaN(lon)) {
+        alert("Please select a target location on the globe or enter coordinates.");
+        return;
+      }
+
+      // Clear old impact visuals
+      impactMarkers.forEach(marker => scene.remove(marker));
+      impactMarkers = [];
+
+      const size = parseFloat(document.getElementById('size').value);
+      const velocity = parseFloat(document.getElementById('velocity').value);
+      
+      // Impact physics calculations
+      const craterRadius = size * 10; 
+      const density = 3200; 
+      const volume = (4/3) * Math.PI * Math.pow(size/2, 3);
+      const mass = volume * density;
+      const energyJoules = 0.5 * mass * Math.pow(velocity * 1000, 2);
+      const megatons = energyJoules / 4.184e15;
+
+      // Create realistic crater visualization
+      const craterSize = (craterRadius / 1000) * 0.015;
+      const craterGeometry = new THREE.CircleGeometry(craterSize, 64);
+      const craterMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x1a0000, 
+        transparent: true, 
+        opacity: 0.9,
+        side: THREE.DoubleSide 
+      });
+      const crater = new THREE.Mesh(craterGeometry, craterMaterial);
+      
+      const position = latLonToVector3(lat, lon, earthRadius + 0.01);
+      crater.position.copy(position);
+      crater.lookAt(0, 0, 0);
+      
+      scene.add(crater);
+      impactMarkers.push(crater);
+
+      // Multi-layer fireball effect
+      const layers = [
+        { size: craterSize * 2.5, color: 0xff0000, opacity: 0.6 },
+        { size: craterSize * 3.5, color: 0xff4400, opacity: 0.4 },
+        { size: craterSize * 5, color: 0xff8800, opacity: 0.2 }
+      ];
+
+      layers.forEach((layer, i) => {
+        const fireballGeometry = new THREE.CircleGeometry(layer.size, 64);
+        const fireballMaterial = new THREE.MeshBasicMaterial({ 
+          color: layer.color, 
+          transparent: true, 
+          opacity: layer.opacity,
+          side: THREE.DoubleSide 
+        });
+        const fireball = new THREE.Mesh(fireballGeometry, fireballMaterial);
+        fireball.position.copy(position);
+        fireball.position.multiplyScalar(1 + (i * 0.001));
+        fireball.lookAt(0, 0, 0);
+        
+        scene.add(fireball);
+        impactMarkers.push(fireball);
+      });
+
+      // Shockwave ring
+      const shockwaveGeometry = new THREE.RingGeometry(craterSize * 4, craterSize * 4.5, 64);
+      const shockwaveMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xffaa00, 
+        transparent: true, 
+        opacity: 0.3,
+        side: THREE.DoubleSide 
+      });
+      const shockwave = new THREE.Mesh(shockwaveGeometry, shockwaveMaterial);
+      shockwave.position.copy(position);
+      shockwave.lookAt(0, 0, 0);
+      
+      scene.add(shockwave);
+      impactMarkers.push(shockwave);
+
+      // Update stats
+      document.getElementById('status-text').innerText = "Impact Complete";
+      document.getElementById('location-info').innerHTML = `Location: <b>${lat.toFixed(2)}°, ${lon.toFixed(2)}°</b>`;
+      document.getElementById('crater-size').innerHTML = `Crater Diameter: <b>${(craterRadius * 2 / 1000).toFixed(2)} km</b>`;
+      document.getElementById('energy-yield').innerHTML = `Energy: <b>${Math.floor(megatons).toLocaleString()} MT</b>`;
+      
+      let severity = "Regional Event";
+      if (megatons > 5000) severity = "Continental Impact";
+      if (megatons > 10000000) severity = "Global Extinction";
+      document.getElementById('destruction-level').innerHTML = `Severity: <b style="color:var(--primary)">${severity}</b>`;
+
+      document.getElementById('stats').style.display = 'block';
+    }
+
+    function resetView() {
+      targetRotation = { x: 0, y: 0.5 };
+      camera.position.set(0, 0, 15);
+      camera.lookAt(0, 0, 0);
+      autoRotate = true;
+    }
+
+    // Animation loop
+    let time = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.001;
+      
+      if (earth) {
+        // Auto-rotate slowly if not dragging
+        if (autoRotate && !isDragging) {
+          targetRotation.y += 0.001;
+        }
+
+        // Smooth rotation
+        currentRotation.x += (targetRotation.x - currentRotation.x) * 0.1;
+        currentRotation.y += (targetRotation.y - currentRotation.y) * 0.1;
+        
+        earth.rotation.x = currentRotation.x;
+        earth.rotation.y = currentRotation.y;
+        
+        if (atmosphere) {
+          atmosphere.rotation.x = currentRotation.x;
+          atmosphere.rotation.y = currentRotation.y;
+        }
+        
+        // Clouds rotate slightly faster for realism
+        if (clouds) {
+          clouds.rotation.x = currentRotation.x;
+          clouds.rotation.y = currentRotation.y + time * 0.1;
+        }
+        
+        // Rotate markers with Earth
+        impactMarkers.forEach(marker => {
+          marker.rotation.x = currentRotation.x;
+          marker.rotation.y = currentRotation.y;
+        });
+      }
+      
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
